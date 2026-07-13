@@ -98,7 +98,7 @@ function RowFragment({
           >
             <span className="absolute top-0 left-0.5 text-[7px] text-white/20 leading-none">{coordId(r, c)}</span>
             <div className="flex flex-col gap-px mt-1.5">
-              {cell.units.slice(0, 5).map((u, i) => (
+              {cell.units.map((u, i) => (
                 <button
                   key={u.id}
                   onClick={(e) => { e.stopPropagation(); onChipClick(r, c, i); }}
@@ -115,9 +115,6 @@ function RowFragment({
                   <span className="text-[9px] font-normal opacity-80">{u.hp}/{u.maxhp}</span>
                 </button>
               ))}
-              {cell.units.length > 5 && (
-                <span className="text-[8px] text-slate-400 text-center">+{cell.units.length - 5}</span>
-              )}
             </div>
           </div>
         );

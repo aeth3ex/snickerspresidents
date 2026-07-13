@@ -232,7 +232,7 @@ type MsgKey =
   | 'alreadyAttacked' | 'attackAdjacentOnly' | 'noUnitsOnCell' | 'cannotAttackAlly'
   | 'defenderBlocksAttack' | 'onlyMHeals' | 'mCooldown' | 'medicAdjacentOnly'
   | 'noUnitsToHeal' | 'medicSelfHeal' | 'fullHp' | 'onlyWHeals' | 'wCooldown'
-  | 'unitSelected' | 'gridRebuilt' | 'medicCooldownEnd';
+  | 'unitSelected' | 'gridRebuilt' | 'medicCooldownEnd' | 'cannotHealDefender';
 
 const MSG_RU: Record<MsgKey, string> = {
   chooseMode: 'Выберите режим и действуйте',
@@ -269,6 +269,7 @@ const MSG_RU: Record<MsgKey, string> = {
   unitSelected: 'Выбран',
   gridRebuilt: 'Сетка перестроена',
   medicCooldownEnd: 'ходов',
+  cannotHealDefender: '⚠️ Защитника (E) нельзя лечить!',
 };
 
 const MSG_EN: Record<MsgKey, string> = {
@@ -306,6 +307,7 @@ const MSG_EN: Record<MsgKey, string> = {
   unitSelected: 'Selected',
   gridRebuilt: 'Grid rebuilt',
   medicCooldownEnd: 'turns',
+  cannotHealDefender: '⚠️ Cannot heal Defender (E)!',
 };
 
 function tr(state: GameState, key: MsgKey): string {
@@ -683,10 +685,10 @@ function doAttack(state: GameState, r: number, c: number): GameState {
   if (tgtCell.units.length === 0) return { ...state, info: `${tr(state, 'noUnitsOnCell')} ${coordId(r, c)}` };
   const enemy = tgtCell.units[tgtCell.units.length - 1];
   if (enemy.team === atk.team) return { ...state, info: tr(state, 'cannotAttackAlly') };
-  if (!state.devMode && enemy.t === 'E')
-    return { ...state, info: tr(state, 'defenderBlocksAttack'), actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null };
   const g = cloneGrid(state.grid);
-  const e = g[r][c].units[g[r][c].units.length - 1];
+  // Find if there's an enemy defender in the cell - they take the hit
+  const defender = g[r][c].units.find(u => u.t === 'E' && u.team !== atk.team);
+  const e = defender || g[r][c].units[g[r][c].units.length - 1];
   e.hp -= 1;
   const newActed = new Set(state.actedUnits);
   newActed.add(atk.id);
@@ -724,6 +726,7 @@ function doHeal(state: GameState, r: number, c: number): GameState {
   if (state.grid[r][c].units.length === 0) return { ...state, info: `${tr(state, 'noUnitsOnCell')} ${coordId(r, c)}` };
   const target = state.grid[r][c].units[state.grid[r][c].units.length - 1];
   if (target === medic) return { ...state, info: tr(state, 'medicSelfHeal') };
+  if (target.t === 'E') return { ...state, info: tr(state, 'cannotHealDefender') };
   if (target.hp >= target.maxhp) return { ...state, info: `${target.t} ${tr(state, 'fullHp')}` };
   const g = cloneGrid(state.grid);
   const t = g[r][c].units[g[r][c].units.length - 1];
@@ -739,6 +742,7 @@ function doWheal(state: GameState, r: number, c: number): GameState {
   if (!wmed || wmed.t !== 'W') return { ...state, info: tr(state, 'onlyWHeals') };
   if (state.grid[r][c].units.length === 0) return { ...state, info: `${tr(state, 'noUnitsOnCell')} ${coordId(r, c)}` };
   const target = state.grid[r][c].units[state.grid[r][c].units.length - 1];
+  if (target.t === 'E') return { ...state, info: tr(state, 'cannotHealDefender') };
   if (target.hp >= target.maxhp) return { ...state, info: `${target.t} ${tr(state, 'fullHp')}` };
   const g = cloneGrid(state.grid);
   const t = g[r][c].units[g[r][c].units.length - 1];

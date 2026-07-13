@@ -44,6 +44,7 @@ export interface UnitDef {
   maxhp: number;
   cost: number;
   label: string;
+  labelEn: string;
   desc: string;
   descEn: string;
   canAttack: boolean;
@@ -52,20 +53,20 @@ export interface UnitDef {
 }
 
 export const UDEFS: Record<UnitType, UnitDef> = {
-  B: { hp: 4, maxhp: 4, cost: 3, label: 'Боец', desc: 'Атакует и захватывает. Ходит на 1 клетку.', descEn: 'Attacks and captures. Moves 1 cell.', canAttack: true, canCapture: true, moveRange: 1 },
-  K: { hp: 5, maxhp: 5, cost: 0, label: 'Король', desc: 'Ходит на 1 клетку, захватывает. Если умрёт — поражение команды.', descEn: 'Moves 1 cell, captures. If killed — team loses.', canAttack: true, canCapture: true, moveRange: 1 },
-  M: { hp: 3, maxhp: 3, cost: 3, label: 'Медик', desc: 'Лечит соседнего юнита (+1 HP), не себя. Раз в 2 хода.', descEn: 'Heals adjacent unit (+1 HP), not self. 2-turn cooldown.', canAttack: false, canCapture: false, moveRange: 1 },
-  W: { hp: 2, maxhp: 2, cost: 7, label: 'Дист. медик', desc: 'Лечит любого юнита на карте. Общий кулдаун 5 ходов для всех W.', descEn: 'Heals any unit on the map. Shared 5-turn cooldown for all W.', canAttack: false, canCapture: false, moveRange: 1 },
-  D: { hp: 2, maxhp: 2, cost: 2, label: 'Денежник', desc: 'Даёт +0.5 батончика каждый ход.', descEn: 'Generates +0.5 Snickers each turn.', canAttack: false, canCapture: false, moveRange: 1 },
-  E: { hp: 4, maxhp: 4, cost: 3, label: 'Защитник', desc: 'Блокирует атаки на свою клетку. Не даёт зайти врагу.', descEn: 'Blocks attacks on its cell. Prevents enemy entry.', canAttack: false, canCapture: false, moveRange: 1 },
-  R: { hp: 1, maxhp: 1, cost: 6, label: 'Разведчик', desc: 'Ходит на 2 клетки (1 по диагонали). Захватывает, не атакует. Может перепрыгнуть защитника.', descEn: 'Moves 2 cells (1 diagonal). Captures, cannot attack. Bypasses Defender.', canAttack: false, canCapture: true, moveRange: 2 },
+  B: { hp: 4, maxhp: 4, cost: 3, label: 'Боец', labelEn: 'Fighter', desc: 'Атакует и захватывает. Ходит на 1 клетку.', descEn: 'Attacks and captures. Moves 1 cell.', canAttack: true, canCapture: true, moveRange: 1 },
+  K: { hp: 5, maxhp: 5, cost: 0, label: 'Король', labelEn: 'King', desc: 'Ходит на 1 клетку, захватывает. Если умрёт — поражение команды.', descEn: 'Moves 1 cell, captures. If killed — team loses.', canAttack: true, canCapture: true, moveRange: 1 },
+  M: { hp: 3, maxhp: 3, cost: 3, label: 'Медик', labelEn: 'Medic', desc: 'Лечит соседнего юнита (+1 HP), не себя. Раз в 2 хода.', descEn: 'Heals adjacent unit (+1 HP), not self. 2-turn cooldown.', canAttack: false, canCapture: false, moveRange: 1 },
+  W: { hp: 2, maxhp: 2, cost: 7, label: 'Дист. медик', labelEn: 'Remote Medic', desc: 'Лечит любого юнита на карте. Общий кулдаун 5 ходов для всех W.', descEn: 'Heals any unit on the map. Shared 5-turn cooldown for all W.', canAttack: false, canCapture: false, moveRange: 1 },
+  D: { hp: 2, maxhp: 2, cost: 2, label: 'Денежник', labelEn: 'Banker', desc: 'Даёт +0.5 батончика каждый ход.', descEn: 'Generates +0.5 Snickers each turn.', canAttack: false, canCapture: false, moveRange: 1 },
+  E: { hp: 4, maxhp: 4, cost: 3, label: 'Защитник', labelEn: 'Defender', desc: 'Принимает на себя все атаки на клетку. Не даёт зайти врагу. Нельзя лечить.', descEn: 'Takes all attacks targeted at its cell. Prevents enemy entry. Cannot be healed.', canAttack: false, canCapture: false, moveRange: 1 },
+  R: { hp: 1, maxhp: 1, cost: 6, label: 'Разведчик', labelEn: 'Scout', desc: 'Ходит на 2 клетки (1 по диагонали). Захватывает, не атакует. Может перепрыгнуть защитника.', descEn: 'Moves 2 cells (1 diagonal). Captures, cannot attack. Bypasses Defender.', canAttack: false, canCapture: true, moveRange: 2 },
 };
 
 export const RULES = `GAME: Snickers Presidents
-UNITS: B=Fighter(cost:3,hp:4,attack,capture) K=King(cost:free,hp:5,move1,capture) M=Medic(cost:3,hp:3,healAdjacent) W=RemoteMedic(cost:7,hp:2,healAny,cooldown5) D=Banker(cost:2,hp:2,gives:0.5perTurn) E=Defender(cost:3,hp:4,blocks) R=Scout(cost:6,hp:1,move2,capture,noAttack)
+UNITS: B=Fighter(cost:3,hp:4,attack,capture) K=King(cost:free,hp:5,move1,capture) M=Medic(cost:3,hp:3,healAdjacent) W=RemoteMedic(cost:7,hp:2,healAny,cooldown5) D=Banker(cost:2,hp:2,gives:0.5perTurn) E=Defender(cost:3,hp:4,takesAllAttacks,preventsEnemyEntry,cannotBeHealed) R=Scout(cost:6,hp:1,move2,capture,noAttack)
 MOVEMENT: 1 cell per turn (no diagonal). R can move 2 cells (1 diagonal allowed, NOT 2-diagonal).
-ATTACK: adjacent cells only, no diagonal. B and K can attack. E blocks all attacks. If King dies - team loses.
-HEALING: M heals +1hp to one adjacent unit (not self), once per 2 turns. W heals any unit on map +1hp, shared cooldown 5 turns.
+ATTACK: adjacent cells only, no diagonal. B and K can attack. E takes all attacks targeted at its cell. If King dies - team loses.
+HEALING: M heals +1hp to one adjacent unit (not self and not E), once per 2 turns. W heals any unit on map +1hp (not E), shared cooldown 5 turns.
 CAPTURE: B,K,R capture cells by moving onto / standing on non-own territory.
 MONEY: D gives 0.5 per turn per unit. Max 10 units per cell. Up to 5 actions per turn.
 SPAWN: Units can only be spawned on own territory.
