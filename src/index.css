@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #080b14;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom scrollbars */
+.scroll-thin::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #2a3a5e;
+  border-radius: 4px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: #3a4a70;
+}
+
+/* Grid cell shimmer on hover */
+.cell-hover {
+  transition: filter 0.15s, outline-color 0.15s;
+}
+.cell-hover:hover {
+  filter: brightness(1.18);
+}
+
+/* No text selection during grid interaction */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}

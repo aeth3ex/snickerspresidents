@@ -1,0 +1,42 @@
+import type { Mode, Team, Territory, UnitType } from '../game/types';
+import type { AIResponse, SavedState } from '../game/useGame';
+import type { Lang } from '../i18n';
+
+export interface GameActions {
+  setMode: (mode: Mode) => void;
+  pickUnit: (utype: UnitType) => void;
+  setPickedTeam: (team: Team) => void;
+  setPickedMaxHp: (hp: number) => void;
+  rebuild: (cols: number, rows: number) => void;
+  resetGrid: () => void;
+  resetGame: () => void;
+  clearHistory: () => void;
+  fillAll: (territory: Territory) => void;
+  fillHalf: () => void;
+  cellClick: (r: number, c: number) => void;
+  chipClick: (r: number, c: number, idx: number) => void;
+  clearSel: () => void;
+  editHp: (delta: number) => void;
+  editMaxHp: (delta: number) => void;
+  deleteSelected: () => void;
+  captureCell: () => void;
+  addMoney: (team: Team, amount: number) => void;
+  transfer: (from: Team, to: Team, amount: number) => void;
+  wcdSet: (value: number) => void;
+  nextTurn: () => void;
+  prevTurn: () => void;
+  setNews: (text: string) => void;
+  setPlayerMsg: (text: string) => void;
+  addEvent: (text: string, expTurn: number | null) => void;
+  toggleEvent: (idx: number) => void;
+  deleteEvent: (idx: number) => void;
+  applyAI: (resp: AIResponse) => void;
+  loadState: (state: SavedState) => void;
+  clearLog: () => void;
+  toggleDevMode: () => void;
+  playerPeekNotes: () => void;
+  resetPeekFlag: () => void;
+  setLang: (lang: Lang) => void;
+  continueAfterKing: () => void;
+  endAfterKing: () => void;
+}
