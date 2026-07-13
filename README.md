@@ -1,74 +1,44 @@
 # Snickers Presidents
 
-Стратегическая настольная игра для двух игроков (Красные vs Жёлтые) с элементами тактики и случайности.
+A turn-based strategy game for two players (Red vs Yellow) with tactical elements and randomness.
 
-## Описание игры
+## Game Description
 
-Snickers Presidents - это пошаговая стратегическая игра, где два игрока управляют своими фишками на сетке. Цель игры - уничтожить короля противника или занять все клетки.
+Snickers Presidents is a strategic board game where two players control their units on a grid. The goal is to eliminate the opponent's King or capture all territories.
 
-## Возможности
+## Features
 
-- **Двухрежимная игра**: Режим размещения и режим боя
-- **Система типов юнитов**: Король, Воин, Маг, Лучник, Шпион
-- **Экономика**: Управление деньгами для покупки юнитов
-- **События**: Случайные события влияют на игровой процесс
-- **Мультиязычность**: Русский и английский языки
-- **Экспорт/Импорт**: Сохранение и загрузка состояния игры
-- **История действий**: Полный лог всех ходов
-- **Supabase интеграция**: Синхронизация данных и новости
+- **Two game modes**: Placement mode and battle mode
+- **Unit system**: 7 different unit types with unique abilities
+- **Economy**: Manage money to purchase units
+- **Multi-language**: Russian and English support
+- **Export/Import**: Save and load game state
+- **Action log**: Complete history of all moves
+- **Supabase integration**: Data synchronization and news
 
-## Технологии
+## Units
 
-- **React 18** - UI библиотека
-- **TypeScript** - Типизация
-- **Vite** - Сборщик проекта
-- **Tailwind CSS** - Стилизация
-- **Lucide React** - Иконки
-- **Supabase** - Бэкенд и база данных
+- **B - Fighter** (4 HP, 3 Snickers): Attacks and captures cells. Moves 1 cell.
+- **K - King** (5 HP, Free): Moves 1 cell, captures cells. If killed — team loses.
+- **M - Medic** (3 HP, 3 Snickers): Heals adjacent unit (+1 HP), not self. 2-turn cooldown.
+- **W - Remote Medic** (2 HP, 7 Snickers): Heals any unit on the map (+1 HP). Shared 5-turn cooldown for all W units.
+- **D - Banker** (2 HP, 2 Snickers): Generates +0.5 Snickers each turn.
+- **E - Defender** (4 HP, 3 Snickers): Blocks all attacks on its cell. Prevents enemy entry.
+- **R - Scout** (1 HP, 6 Snickers): Moves 2 cells (1 diagonal allowed). Captures cells, cannot attack. Bypasses Defender.
 
-## Установка
+## Tech Stack
 
-```bash
-npm install
-```
+- React 18
+- TypeScript
+- Vite
+- Tailwind CSS
+- Lucide React
+- Supabase
 
-## Запуск
+## Live Site
 
-### Разработка
-```bash
-npm run dev
-```
+https://aeth3ex.github.io/snickers-presidents/
 
-### Сборка для продакшена
-```bash
-npm run build
-```
-
-### Предпросмотр сборки
-```bash
-npm run preview
-```
-
-## GitHub Pages
-
-Проект настроен для деплоя на GitHub Pages. После пуша в репозиторий:
-1. Перейдите в Settings > Pages
-2. Выберите ветку и папку (обычно `gh-pages` или `main` с папкой `dist`)
-3. Сайт будет доступен по адресу `https://username.github.io/snickers-presidents/`
-
-## Структура проекта
-
-```
-src/
-├── components/     # React компоненты UI
-├── game/          # Логика игры и хуки
-├── lib/           # Утилиты и Supabase клиент
-├── App.tsx        # Главный компонент
-├── main.tsx       # Точка входа
-├── index.css      # Глобальные стили
-└── i18n.ts        # Интернационализация
-```
-
-## Лицензия
+## License
 
 MIT
