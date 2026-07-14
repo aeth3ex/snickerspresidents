@@ -30,6 +30,7 @@ export interface Cell {
 export interface GameEvent {
   id: string;
   text: string;
+  desc: string;
   expTurn: number | null;
   done: boolean;
 }

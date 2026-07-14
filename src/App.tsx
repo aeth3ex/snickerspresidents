@@ -11,6 +11,7 @@ import { ChangelogModal } from './components/ChangelogModal';
 import { RulesModal } from './components/RulesModal';
 import { NewsModal } from './components/NewsModal';
 import { KingDeathDialog } from './components/KingDeathDialog';
+import { SettingsModal } from './components/SettingsModal';
 import { verifyAdminCode, fetchVersion } from './lib/supabase';
 import { I18nContext, translations } from './i18n';
 import type { GameActions } from './components/types';
@@ -20,6 +21,7 @@ function App() {
   const [showChangelog, setShowChangelog] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [showNews, setShowNews] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [adminCode, setAdminCode] = useState<string | null>(null);
   const [version, setVersion] = useState('v1.0');
   const lang = state.lang;
@@ -121,6 +123,7 @@ function App() {
           onShowChangelog={() => setShowChangelog(true)}
           onShowRules={() => setShowRules(true)}
           onShowNews={() => setShowNews(true)}
+          onShowSettings={() => setShowSettings(true)}
           onDevCodeSubmit={handleDevCodeSubmit}
           onSetLang={setLang}
         />
@@ -136,7 +139,8 @@ function App() {
               pickedMaxHp={state.pickedMaxHp}
               redMoney={state.redMoney}
               yelMoney={state.yelMoney}
-              wCooldown={state.wCooldown}
+              wCooldownRed={state.wCooldownRed}
+              wCooldownYellow={state.wCooldownYellow}
               actions={gameActions}
             />
           </div>
@@ -176,6 +180,9 @@ function App() {
               aiMessage={state.aiMessage}
               aiNotes={state.aiNotes}
               playerPeekedNotes={state.playerPeekedNotes}
+              yourNotes={state.yourNotes}
+              yourNotesExpanded={state.yourNotesExpanded}
+              opponentType={state.opponentType}
               actions={gameActions}
               onExportText={buildTextExport}
               onLoadAI={handleLoadAI}
@@ -192,6 +199,17 @@ function App() {
       )}
       {showNews && (
         <NewsModal onClose={() => setShowNews(false)} adminCode={adminCode} lang={lang} />
+      )}
+      {showSettings && (
+        <SettingsModal 
+          onClose={() => setShowSettings(false)} 
+          lang={lang} 
+          onSetLang={setLang}
+          opponentType={state.opponentType}
+          onSetOpponentType={actions.setOpponentType}
+          rulesDisabled={state.rulesDisabled}
+          onSetRulesDisabled={actions.setRulesDisabled}
+        />
       )}
       {state.kingKilledTeam && !state.winner && (
         <KingDeathDialog

@@ -28,7 +28,7 @@ export function LogPanel({ log, onClear }: Props) {
       </div>
       <div ref={ref} className="max-h-32 overflow-y-auto scroll-thin text-[11px] text-slate-400 leading-relaxed font-mono">
         {log.length === 0 ? (
-          <span className="text-slate-600">{lang === 'ru' ? '— Лог пуст —' : '— Log empty —'}</span>
+          <span className="text-slate-600">-- Log empty --</span>
         ) : (
           log.map((entry, i) => (
             <div key={i} className="py-px">

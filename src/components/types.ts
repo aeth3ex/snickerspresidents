@@ -22,14 +22,15 @@ export interface GameActions {
   captureCell: () => void;
   addMoney: (team: Team, amount: number) => void;
   transfer: (from: Team, to: Team, amount: number) => void;
-  wcdSet: (value: number) => void;
+  wcdSet: (team: Team, value: number) => void;
   nextTurn: () => void;
   prevTurn: () => void;
   setNews: (text: string) => void;
   setPlayerMsg: (text: string) => void;
-  addEvent: (text: string, expTurn: number | null) => void;
+  addEvent: (text: string, desc: string, expTurn: number | null) => void;
   toggleEvent: (idx: number) => void;
   deleteEvent: (idx: number) => void;
+  extendEvent: (idx: number, newExpTurn: number) => void;
   applyAI: (resp: AIResponse) => void;
   loadState: (state: SavedState) => void;
   clearLog: () => void;
@@ -37,6 +38,10 @@ export interface GameActions {
   playerPeekNotes: () => void;
   resetPeekFlag: () => void;
   setLang: (lang: Lang) => void;
+  setOpponentType: (type: 'ai' | 'human-offline' | 'human-online') => void;
+  setRulesDisabled: (value: boolean) => void;
+  setYourNotes: (text: string) => void;
+  toggleYourNotesExpanded: () => void;
   continueAfterKing: () => void;
   endAfterKing: () => void;
 }

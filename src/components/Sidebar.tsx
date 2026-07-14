@@ -18,7 +18,8 @@ interface Props {
   pickedMaxHp: number;
   redMoney: number;
   yelMoney: number;
-  wCooldown: number;
+  wCooldownRed: number;
+  wCooldownYellow: number;
   actions: GameActions;
 }
 
@@ -39,7 +40,7 @@ function getModeButtons(t: ReturnType<typeof useI18n>['t']): { mode: Mode; label
 
 export function Sidebar({
   cols, rows, mode, pickedType, pickedTeam, pickedMaxHp,
-  redMoney, yelMoney, wCooldown, actions,
+  redMoney, yelMoney, wCooldownRed, wCooldownYellow, actions,
 }: Props) {
   const { t, lang } = useI18n();
   const [colsInput, setColsInput] = useState(cols);
@@ -170,14 +171,23 @@ export function Sidebar({
       </Card>
 
       <Card title={t.wCooldown}>
-        <div className="flex items-center gap-2 mb-2 text-xs">
-          <span className="text-slate-400">{lang === 'ru' ? 'Осталось:' : 'Remaining:'}</span>
-          <span className={`font-semibold ${wCooldown > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{wCooldown}</span>
-          <span className="text-slate-400">{lang === 'ru' ? 'ходов' : 'turns'}</span>
+        <div className="flex flex-col gap-2 mb-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">{lang === 'ru' ? 'Красные:' : 'Red:'}</span>
+            <span className={`font-semibold ${wCooldownRed > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{wCooldownRed}</span>
+            <span className="text-slate-400">{lang === 'ru' ? 'ходов' : 'turns'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">{lang === 'ru' ? 'Жёлтые:' : 'Yellow:'}</span>
+            <span className={`font-semibold ${wCooldownYellow > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{wCooldownYellow}</span>
+            <span className="text-slate-400">{lang === 'ru' ? 'ходов' : 'turns'}</span>
+          </div>
         </div>
         <div className="flex gap-1.5">
-          <button onClick={() => actions.wcdSet(5)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'Использовать →5' : 'Use →5'}</button>
-          <button onClick={() => actions.wcdSet(0)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'Сброс →0' : 'Reset →0'}</button>
+          <button onClick={() => actions.wcdSet('red', 5)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'R→5' : 'R→5'}</button>
+          <button onClick={() => actions.wcdSet('yellow', 5)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'Y→5' : 'Y→5'}</button>
+          <button onClick={() => actions.wcdSet('red', 0)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'R→0' : 'R→0'}</button>
+          <button onClick={() => actions.wcdSet('yellow', 0)} className="px-2 py-1 text-xs rounded-md bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-200 transition-colors">{lang === 'ru' ? 'Y→0' : 'Y→0'}</button>
         </div>
       </Card>
     </aside>

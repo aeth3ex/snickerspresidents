@@ -41,7 +41,8 @@ export interface GameState {
   turnTeam: Team;
   redMoney: number;
   yelMoney: number;
-  wCooldown: number;
+  wCooldownRed: number;
+  wCooldownYellow: number;
   medicCooldowns: Record<string, number>;
   /** unit ids that already attacked this turn */
   actedUnits: Set<string>;
@@ -57,8 +58,12 @@ export interface GameState {
   news: string;
   playerMessage: string;
   aiMessage: string;
-  /** ИИ личный блокнот */
+  /** ИИ/Оппонент личный блокнот */
   aiNotes: AINote[];
+  /** Your own private notebook */
+  yourNotes: string;
+  /** Whether your notebook is expanded */
+  yourNotesExpanded: boolean;
   /** флаг: игрок заглянул в блокнот ИИ с момента последнего JSON-экспорта */
   playerPeekedNotes: boolean;
   winner: Team | null;
@@ -67,6 +72,10 @@ export interface GameState {
   devMode: boolean;
   /** текущий язык интерфейса */
   lang: Lang;
+  /** Opponent type: "ai", "human-offline", or "human-online" */
+  opponentType: 'ai' | 'human-offline' | 'human-online';
+  /** Rules disabled (cheat mode) */
+  rulesDisabled: boolean;
 }
 
 type Action =
@@ -89,14 +98,15 @@ type Action =
   | { type: 'CAPTURE_CELL' }
   | { type: 'ADD_MONEY'; team: Team; amount: number }
   | { type: 'TRANSFER'; from: Team; to: Team; amount: number }
-  | { type: 'WCD_SET'; value: number }
+  | { type: 'WCD_SET'; team: Team; value: number }
   | { type: 'NEXT_TURN' }
   | { type: 'PREV_TURN' }
   | { type: 'SET_NEWS'; text: string }
   | { type: 'SET_PLAYER_MSG'; text: string }
-  | { type: 'ADD_EVENT'; text: string; expTurn: number | null }
+  | { type: 'ADD_EVENT'; text: string; desc: string; expTurn: number | null }
   | { type: 'TOGGLE_EVENT'; idx: number }
   | { type: 'DELETE_EVENT'; idx: number }
+  | { type: 'EXTEND_EVENT'; idx: number; newExpTurn: number }
   | { type: 'APPLY_AI'; resp: AIResponse }
   | { type: 'LOAD_STATE'; state: SavedState }
   | { type: 'CLEAR_LOG' }
@@ -105,7 +115,11 @@ type Action =
   | { type: 'RESET_PEEK_FLAG' }
   | { type: 'CONTINUE_AFTER_KING' }
   | { type: 'END_AFTER_KING' }
-  | { type: 'SET_LANG'; lang: Lang };
+  | { type: 'SET_LANG'; lang: Lang }
+  | { type: 'SET_OPPONENT_TYPE'; opponentType: 'ai' | 'human-offline' | 'human-online' }
+  | { type: 'SET_RULES_DISABLED'; value: boolean }
+  | { type: 'SET_YOUR_NOTES'; text: string }
+  | { type: 'TOGGLE_YOUR_NOTES_EXPANDED' };
 
 export interface AIAction {
   type?: string;
@@ -134,7 +148,8 @@ export interface AINotebookOp {
 export interface SavedState {
   meta?: { turn?: number; activeTeam?: Team };
   money?: { red?: number; yellow?: number };
-  wCooldown?: number;
+  wCooldownRed?: number;
+  wCooldownYellow?: number;
   medicCooldowns?: Record<string, number>;
   map?: {
     cols?: number;
@@ -142,7 +157,7 @@ export interface SavedState {
     grid?: { coord?: string; territory?: string; units?: { t: UnitType; hp: number; maxhp: number; team: Team }[] }[][];
   };
   news?: string;
-  events?: { text: string; expiresOnTurn: number | null }[];
+  events?: { text: string; desc?: string; expiresOnTurn: number | null }[];
   aiNotes?: AINote[];
 }
 
@@ -191,7 +206,8 @@ function makeInitialState(): GameState {
     turnTeam: 'red',
     redMoney: 5,
     yelMoney: 5,
-    wCooldown: 0,
+    wCooldownRed: 0,
+    wCooldownYellow: 0,
     medicCooldowns: {},
     actedUnits: new Set(),
     log: [{ turn: 1, text: 'Game started' }],
@@ -201,16 +217,21 @@ function makeInitialState(): GameState {
     actionFromIdx: null,
     selCell: null,
     selIdx: null,
-    info: 'Выберите режим и действуйте',
+    info: 'Choose a mode and act',
     news: '',
     playerMessage: '',
     aiMessage: '— No response yet —',
     aiNotes: [],
+    yourNotes: '',
+    yourNotesExpanded: false,
     playerPeekedNotes: false,
     winner: null,
     kingKilledTeam: null,
     devMode: false,
-    lang: (localStorage.getItem('sp-lang') as Lang) || 'ru',
+    lang: 'en',
+    opponentType: 'ai',
+    /** Rules disabled (cheat mode) */
+    rulesDisabled: false,
   };
 }
 
@@ -239,37 +260,37 @@ const MSG_RU: Record<MsgKey, string> = {
   noUnits: 'Нет юнитов',
   alreadyYours: 'уже ваша!',
   transferSelf: 'Нельзя передать самому себе',
-  insufficientFunds: '⚠️ Недостаточно средств!',
-  devOn: '🔓 Режим разработчика включён — все ограничения сняты',
-  devOff: '🔒 Режим разработчика отключён',
-  cellLimit: '⚠️ Лимит 10 юнитов!',
-  placeOwnTerritory: '⚠️ Размещать только на своей территории',
-  notEnoughMoney: '⚠️ Мало батончиков! Нужно',
-  unitPlaced: 'Размещён',
-  clickUnitFirst: 'Сначала кликни по юниту',
-  clickAttackerFirst: 'Сначала кликни по атакующему',
-  clickMedicFirst: 'Сначала кликни по M-медику',
-  clickWhealerFirst: 'Сначала кликни по W-медику',
-  defenderBlocksCell: '🛡 Защитник блокирует клетку!',
-  cellLimitBattle: '⚠️ Лимит 10 юнитов на клетке!',
-  cannotAttack: 'не может атаковать!',
-  alreadyAttacked: 'уже атаковал в этот ход!',
-  attackAdjacentOnly: '⚠️ Атака только по соседству, не по диагонали!',
-  noUnitsOnCell: 'Нет юнитов на клетке',
-  cannotAttackAlly: '⚠️ Нельзя атаковать союзника!',
-  defenderBlocksAttack: '🛡 Защитник (E) блокирует атаку!',
-  onlyMHeals: 'Только M-медик может лечить рядом',
-  mCooldown: '⚠️ M на кулдауне! Ещё',
-  medicAdjacentOnly: '⚠️ Медик лечит только рядом, не по диагонали!',
-  noUnitsToHeal: 'Нет юнитов для лечения',
-  medicSelfHeal: 'Медик не лечит сам себя!',
-  fullHp: 'уже на полном HP',
-  onlyWHeals: 'Только W может лечить дистанционно',
-  wCooldown: '⚠️ W на кулдауне! Ещё',
-  unitSelected: 'Выбран',
-  gridRebuilt: 'Сетка перестроена',
-  medicCooldownEnd: 'ходов',
-  cannotHealDefender: '⚠️ Защитника (E) нельзя лечить!',
+  insufficientFunds: 'WARNING: Insufficient funds!',
+  devOn: 'Developer mode on - all restrictions lifted',
+  devOff: 'Developer mode off',
+  cellLimit: 'WARNING: Limit 10 units!',
+  placeOwnTerritory: 'WARNING: Place only on your own territory',
+  notEnoughMoney: 'WARNING: Not enough Snickers! Need',
+  unitPlaced: 'Placed',
+  clickUnitFirst: 'Click a unit first',
+  clickAttackerFirst: 'Click an attacker first',
+  clickMedicFirst: 'Click an M-medic first',
+  clickWhealerFirst: 'Click a W-medic first',
+  defenderBlocksCell: 'Defender blocks the cell!',
+  cellLimitBattle: 'WARNING: Limit 10 units per cell!',
+  cannotAttack: 'cannot attack!',
+  alreadyAttacked: 'already attacked this turn!',
+  attackAdjacentOnly: 'WARNING: Attack adjacent only, not diagonal!',
+  noUnitsOnCell: 'No units on cell',
+  cannotAttackAlly: 'WARNING: Cannot attack an ally!',
+  defenderBlocksAttack: 'Defender (E) blocks the attack!',
+  onlyMHeals: 'Only M-medic can heal adjacent',
+  mCooldown: 'WARNING: M on cooldown! ',
+  medicAdjacentOnly: 'WARNING: Medic heals adjacent only, not diagonal!',
+  noUnitsToHeal: 'No units to heal',
+  medicSelfHeal: 'Medic cannot heal itself!',
+  fullHp: 'is already at full HP',
+  onlyWHeals: 'Only W can heal remotely',
+  wCooldown: 'WARNING: W on cooldown! ',
+  unitSelected: 'Selected',
+  gridRebuilt: 'Grid rebuilt',
+  medicCooldownEnd: 'turns',
+  cannotHealDefender: 'WARNING: Cannot heal Defender (E)!',
 };
 
 const MSG_EN: Record<MsgKey, string> = {
@@ -277,37 +298,37 @@ const MSG_EN: Record<MsgKey, string> = {
   noUnits: 'No units',
   alreadyYours: 'is already yours!',
   transferSelf: 'Cannot transfer to yourself',
-  insufficientFunds: '⚠️ Insufficient funds!',
-  devOn: '🔓 Developer mode on — all restrictions lifted',
-  devOff: '🔒 Developer mode off',
-  cellLimit: '⚠️ Limit 10 units!',
-  placeOwnTerritory: '⚠️ Place only on your own territory',
-  notEnoughMoney: '⚠️ Not enough Snickers! Need',
+  insufficientFunds: 'WARNING: Insufficient funds!',
+  devOn: 'Developer mode on - all restrictions lifted',
+  devOff: 'Developer mode off',
+  cellLimit: 'WARNING: Limit 10 units!',
+  placeOwnTerritory: 'WARNING: Place only on your own territory',
+  notEnoughMoney: 'WARNING: Not enough Snickers! Need',
   unitPlaced: 'Placed',
   clickUnitFirst: 'Click a unit first',
   clickAttackerFirst: 'Click an attacker first',
   clickMedicFirst: 'Click an M-medic first',
   clickWhealerFirst: 'Click a W-medic first',
-  defenderBlocksCell: '🛡 Defender blocks the cell!',
-  cellLimitBattle: '⚠️ Limit 10 units per cell!',
+  defenderBlocksCell: 'Defender blocks the cell!',
+  cellLimitBattle: 'WARNING: Limit 10 units per cell!',
   cannotAttack: 'cannot attack!',
   alreadyAttacked: 'already attacked this turn!',
-  attackAdjacentOnly: '⚠️ Attack adjacent only, not diagonal!',
+  attackAdjacentOnly: 'WARNING: Attack adjacent only, not diagonal!',
   noUnitsOnCell: 'No units on cell',
-  cannotAttackAlly: '⚠️ Cannot attack an ally!',
-  defenderBlocksAttack: '🛡 Defender (E) blocks the attack!',
+  cannotAttackAlly: 'WARNING: Cannot attack an ally!',
+  defenderBlocksAttack: 'Defender (E) blocks the attack!',
   onlyMHeals: 'Only M-medic can heal adjacent',
-  mCooldown: '⚠️ M on cooldown! ',
-  medicAdjacentOnly: '⚠️ Medic heals adjacent only, not diagonal!',
+  mCooldown: 'WARNING: M on cooldown! ',
+  medicAdjacentOnly: 'WARNING: Medic heals adjacent only, not diagonal!',
   noUnitsToHeal: 'No units to heal',
   medicSelfHeal: 'Medic cannot heal itself!',
   fullHp: 'is already at full HP',
   onlyWHeals: 'Only W can heal remotely',
-  wCooldown: '⚠️ W on cooldown! ',
+  wCooldown: 'WARNING: W on cooldown! ',
   unitSelected: 'Selected',
   gridRebuilt: 'Grid rebuilt',
   medicCooldownEnd: 'turns',
-  cannotHealDefender: '⚠️ Cannot heal Defender (E)!',
+  cannotHealDefender: 'WARNING: Cannot heal Defender (E)!',
 };
 
 function tr(state: GameState, key: MsgKey): string {
@@ -341,7 +362,7 @@ function reducer(state: GameState, action: Action): GameState {
 
     case 'RESET_GRID': {
       const g = initGrid(state.cols, state.rows);
-      const msg = 'Карта очищена';
+      const msg = 'Grid cleared';
       return {
         ...state,
         grid: g,
@@ -356,7 +377,14 @@ function reducer(state: GameState, action: Action): GameState {
 
     case 'RESET_GAME': {
       const fresh = makeInitialState();
-      return { ...fresh, aiNotes: state.aiNotes };
+      return { 
+        ...fresh, 
+        aiNotes: state.aiNotes, 
+        yourNotes: state.yourNotes, 
+        yourNotesExpanded: state.yourNotesExpanded, 
+        opponentType: state.opponentType,
+        lang: state.lang,
+      };
     }
 
     case 'CLEAR_HISTORY':
@@ -383,12 +411,12 @@ function reducer(state: GameState, action: Action): GameState {
       if (state.mode === 'paint-neutral') { const g = cloneGrid(state.grid); g[r][c].territory = 'neutral-t'; return { ...state, grid: g }; }
       if (state.mode === 'place-unit') return doPlaceUnit(state, r, c);
       if (state.mode === 'delete-unit') {
-        if (cell.units.length === 0) return { ...state, info: `${tr(state, 'noUnits')} ${coordId(r, c)}` };
-        const g = cloneGrid(state.grid);
-        const u = g[r][c].units.pop()!;
-        const msg = `Удалён ${u.t} с ${coordId(r, c)}`;
-        return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
-      }
+    if (cell.units.length === 0) return { ...state, info: `${tr(state, 'noUnits')} ${coordId(r, c)}` };
+    const g = cloneGrid(state.grid);
+    const u = g[r][c].units.pop()!;
+    const msg = `Deleted ${u.t} from ${coordId(r, c)}`;
+    return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+  }
       if (state.mode === 'move') return doMove(state, r, c);
       if (state.mode === 'attack') return doAttack(state, r, c);
       if (state.mode === 'heal') return doHeal(state, r, c);
@@ -403,6 +431,10 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, selCell: null, selIdx: null, actionFrom: null, actionFromIdx: null };
 
     case 'EDIT_HP': {
+      // Only allowed in dev mode (not even in cheat mode)
+      if (!state.devMode) {
+        return { ...state, info: 'Editing HP is only allowed in dev mode' };
+      }
       if (!state.selCell || state.selIdx === null) return state;
       const [r, c] = state.selCell;
       const g = cloneGrid(state.grid);
@@ -410,7 +442,7 @@ function reducer(state: GameState, action: Action): GameState {
       if (!u) return state;
       u.hp = Math.max(0, Math.min(u.maxhp, u.hp + action.delta));
       if (u.hp <= 0) {
-        const msg = `${u.t} умер на ${coordId(r, c)}`;
+        const msg = `${u.t} destroyed at ${coordId(r, c)}`;
         g[r][c].units.splice(state.selIdx, 1);
         return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg), selCell: null, selIdx: null, actionFrom: null, actionFromIdx: null };
       }
@@ -418,6 +450,10 @@ function reducer(state: GameState, action: Action): GameState {
     }
 
     case 'EDIT_MAXHP': {
+      // Only allowed in dev mode (not even in cheat mode)
+      if (!state.devMode) {
+        return { ...state, info: 'Editing Max HP is only allowed in dev mode' };
+      }
       if (!state.selCell || state.selIdx === null) return state;
       const [r, c] = state.selCell;
       const g = cloneGrid(state.grid);
@@ -425,16 +461,20 @@ function reducer(state: GameState, action: Action): GameState {
       if (!u) return state;
       u.maxhp = Math.max(1, u.maxhp + action.delta);
       u.hp = Math.min(u.hp, u.maxhp);
-      const msg = `${u.t} максHP→${u.maxhp}`;
+      const msg = `${u.t} max HP set to ${u.maxhp}`;
       return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
     }
 
     case 'DELETE_SELECTED': {
+      // Only allowed in dev mode (not even in cheat mode)
+      if (!state.devMode) {
+        return { ...state, info: 'Deleting units is only allowed in dev mode' };
+      }
       if (!state.selCell || state.selIdx === null) return state;
       const [r, c] = state.selCell;
       const g = cloneGrid(state.grid);
       const u = g[r][c].units.splice(state.selIdx, 1)[0];
-      const msg = `Удалён ${u.t} с ${coordId(r, c)}`;
+      const msg = `Deleted ${u.t} from ${coordId(r, c)}`;
       return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg), selCell: null, selIdx: null, actionFrom: null, actionFromIdx: null };
     }
 
@@ -446,18 +486,28 @@ function reducer(state: GameState, action: Action): GameState {
       if (!u) return state;
       const capTerr = teamToTerritory(u.team);
       if (g[r][c].territory === capTerr) return { ...state, info: `${coordId(r, c)} ${tr(state, 'alreadyYours')}` };
+      // When rules are enabled (not disabled), can only capture with units that can capture (B, K, R)
+      if (!state.devMode && !state.rulesDisabled) {
+        if (!UDEFS[u.t].canCapture) {
+          return { ...state, info: `${u.t} cannot capture cells` };
+        }
+      }
       g[r][c].territory = capTerr;
-      const msg = `🏳️ ${u.t}(${u.team}) захватил ${coordId(r, c)}`;
+      const msg = `${u.t}(${u.team}) captured ${coordId(r, c)}`;
       return { ...state, grid: g, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg), selCell: null, selIdx: null, actionFrom: null, actionFromIdx: null };
     }
 
     case 'ADD_MONEY': {
+      // Only allowed in dev mode or when rules are disabled (cheat mode)
+      if (!state.devMode && !state.rulesDisabled) {
+        return { ...state, info: 'Adding money is not allowed when rules are enabled' };
+      }
       const v = r01(action.amount);
       let redMoney = state.redMoney;
       let yelMoney = state.yelMoney;
       if (action.team === 'red') redMoney = r01(redMoney + v);
       else if (action.team === 'yellow') yelMoney = r01(yelMoney + v);
-      const msg = `${action.team === 'red' ? '🔴' : '🟡'} ${v >= 0 ? '+' : ''}${v}🍫`;
+      const msg = `${action.team}: ${v >= 0 ? '+' : ''}${v} bars`;
       return { ...state, redMoney, yelMoney, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
     }
 
@@ -470,13 +520,17 @@ function reducer(state: GameState, action: Action): GameState {
       let yelMoney = state.yelMoney;
       if (action.from === 'red') { redMoney = r01(redMoney - amt); yelMoney = r01(yelMoney + amt); }
       else { yelMoney = r01(yelMoney - amt); redMoney = r01(redMoney + amt); }
-      const msg = `📨 Передача ${action.from}→${action.to}: ${amt}🍫`;
+      const msg = `Transfer ${action.from}->${action.to}: ${amt} bars`;
       return { ...state, redMoney, yelMoney, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
     }
 
     case 'WCD_SET': {
-      const msg = `W кд→${action.value}`;
-      return { ...state, wCooldown: action.value, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+      const msg = `W cooldown for ${action.team} set to ${action.value}`;
+      if (action.team === 'red') {
+        return { ...state, wCooldownRed: action.value, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+      } else {
+        return { ...state, wCooldownYellow: action.value, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+      }
     }
 
     case 'NEXT_TURN': {
@@ -488,26 +542,31 @@ function reducer(state: GameState, action: Action): GameState {
           });
       const redMoney = r01(state.redMoney + rd * 0.5);
       const yelMoney = r01(state.yelMoney + yd * 0.5);
-      const wCooldown = Math.max(0, state.wCooldown - 1);
+      const wCooldownRed = Math.max(0, state.wCooldownRed - 1);
+      const wCooldownYellow = Math.max(0, state.wCooldownYellow - 1);
       const medicCooldowns: Record<string, number> = {};
       for (const [id, cd] of Object.entries(state.medicCooldowns)) {
         if (cd > 1) medicCooldowns[id] = cd - 1;
       }
       const newTurn = state.turn + 1;
       const newTeam: Team = state.turnTeam === 'red' ? 'yellow' : 'red';
-      const header = `═══ Turn ${newTurn} (${newTeam === 'red' ? 'Red' : 'Yellow'}) ═══`;
+      const header = `Turn ${newTurn} (${newTeam === 'red' ? 'Red' : 'Yellow'})`;
       let log = addLogEntry(state.log, newTurn, header);
       let history = addLogEntry(state.history, newTurn, header);
       state.events.forEach((ev) => {
         if (!ev.done && ev.expTurn && newTurn >= ev.expTurn) {
-          const w = `⚠️ СОБЫТИЕ ИСТЕКЛО: ${ev.text}`;
+          const w = `Event expired: ${ev.text}`;
+          log = addLogEntry(log, newTurn, w);
+          history = addLogEntry(history, newTurn, w);
+        } else if (!ev.done && ev.expTurn && ev.expTurn - newTurn <= 6 && ev.expTurn - newTurn > 0) {
+          const w = `Event expiring soon: ${ev.text} (${ev.expTurn - newTurn} turns left)`;
           log = addLogEntry(log, newTurn, w);
           history = addLogEntry(history, newTurn, w);
         }
       });
       return {
         ...state,
-        redMoney, yelMoney, wCooldown, medicCooldowns,
+        redMoney, yelMoney, wCooldownRed, wCooldownYellow, medicCooldowns,
         actedUnits: new Set(),
         turn: newTurn, turnTeam: newTeam,
         log, history,
@@ -528,7 +587,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'SET_PLAYER_MSG': return { ...state, playerMessage: action.text };
 
     case 'ADD_EVENT': {
-      const ev: GameEvent = { id: uid(), text: action.text, expTurn: action.expTurn, done: false };
+      const ev: GameEvent = { id: uid(), text: action.text, desc: action.desc, expTurn: action.expTurn, done: false };
       return { ...state, events: [...state.events, ev] };
     }
 
@@ -542,8 +601,25 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, events };
     }
 
+    case 'EXTEND_EVENT': {
+      const events = state.events.map((ev, i) => i === action.idx ? { ...ev, expTurn: action.newExpTurn } : ev);
+      return { ...state, events };
+    }
+
+    case 'SET_OPPONENT_TYPE':
+      return { ...state, opponentType: action.opponentType };
+
+    case 'SET_RULES_DISABLED':
+      return { ...state, rulesDisabled: action.value };
+
+    case 'SET_YOUR_NOTES':
+      return { ...state, yourNotes: action.text };
+
+    case 'TOGGLE_YOUR_NOTES_EXPANDED':
+      return { ...state, yourNotesExpanded: !state.yourNotesExpanded };
+
     case 'APPLY_AI': {
-      let s = { ...state, aiMessage: action.resp.message || '(Сообщение не указано)' };
+      let s = { ...state, aiMessage: action.resp.message || '(No message specified)' };
       let log = s.log;
       let history = s.history;
       const acts = action.resp.actions ?? [];
@@ -558,7 +634,7 @@ function reducer(state: GameState, action: Action): GameState {
       for (const op of (action.resp.notebookOps ?? [])) {
         aiNotes = applyNotebookOp(aiNotes, op, s.turn);
       }
-      const m = state.lang === 'en' ? `🤖 AI response: ${acts.length} actions` : `🤖 Ответ ИИ: ${acts.length} действий`;
+      const m = `AI response: ${acts.length} actions`;
       log = addLogEntry(log, s.turn, m);
       history = addLogEntry(history, s.turn, m);
       return { ...s, log, history, aiNotes };
@@ -585,9 +661,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'CONTINUE_AFTER_KING': {
       const killedTeam = state.kingKilledTeam;
       if (!killedTeam) return state;
-      const logMsg = state.lang === 'en'
-        ? `👑 King of ${killedTeam === 'red' ? 'Red' : 'Yellow'} was slain, but players chose to continue the game`
-        : `👑 Король ${killedTeam === 'red' ? 'Красных' : 'Жёлтых'} погиб, но игроки решили продолжить игру`;
+      const logMsg = `King of ${killedTeam === 'red' ? 'Red' : 'Yellow'} was slain, but players chose to continue the game`;
       return {
         ...state,
         kingKilledTeam: null,
@@ -600,9 +674,7 @@ function reducer(state: GameState, action: Action): GameState {
       const killedTeam = state.kingKilledTeam;
       if (!killedTeam) return state;
       const winner = killedTeam === 'red' ? 'yellow' : 'red' as Team;
-      const logMsg = state.lang === 'en'
-        ? `👑 King of ${killedTeam === 'red' ? 'Red' : 'Yellow'} was slain — ${winner === 'red' ? 'Red' : 'Yellow'} wins!`
-        : `👑 Король ${killedTeam === 'red' ? 'Красных' : 'Жёлтых'} погиб — ${winner === 'red' ? 'Красные' : 'Жёлтые'} побеждают!`;
+      const logMsg = `King of ${killedTeam === 'red' ? 'Red' : 'Yellow'} was slain — ${winner === 'red' ? 'Red' : 'Yellow'} wins!`;
       return {
         ...state,
         kingKilledTeam: null,
@@ -627,6 +699,11 @@ function doPlaceUnit(state: GameState, r: number, c: number): GameState {
   const cell = state.grid[r][c];
   if (!state.devMode && cell.units.length >= 10) return { ...state, info: tr(state, 'cellLimit') };
   const team = state.pickedTeam;
+  // When rules are enabled (not disabled), can only place on own territory
+  if (!state.devMode && !state.rulesDisabled) {
+    const cellTerr = territoryToTeam(cell.territory);
+    if (cellTerr !== team) return { ...state, info: 'Can only spawn units on your own territory when rules are enabled' };
+  }
   const cellTeam = territoryToTeam(cell.territory);
   if (!state.devMode && team !== 'neutral' && cellTeam !== team)
     return { ...state, info: `${tr(state, 'placeOwnTerritory')} (${teamName(state, team)})` };
@@ -644,7 +721,7 @@ function doPlaceUnit(state: GameState, r: number, c: number): GameState {
   }
   const g = cloneGrid(state.grid);
   g[r][c].units.push({ id: uid(), t: state.pickedType, hp: maxhp, maxhp, team });
-  const msg = `Разм. ${state.pickedType}(${team}) ${maxhp}/${maxhp} → ${coordId(r, c)}${cost > 0 ? ` [−${cost}🍫]` : ''}`;
+  const msg = `Placed ${state.pickedType}(${team}) ${maxhp}/${maxhp} at ${coordId(r, c)}${cost > 0 ? ` [-${cost} bars]` : ''}`;
   return { ...state, grid: g, redMoney, yelMoney, info: `${tr(state, 'unitPlaced')} ${state.pickedType} ${state.lang === 'en' ? 'on' : 'на'} ${coordId(r, c)}`, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
 }
 
@@ -665,7 +742,7 @@ function doMove(state: GameState, r: number, c: number): GameState {
   const g = cloneGrid(state.grid);
   const moved = g[fr][fc].units.splice(fi, 1)[0];
   g[r][c].units.push(moved);
-  const msg = `${u.t} ${coordId(fr, fc)}→${coordId(r, c)}`;
+  const msg = `${u.t} ${coordId(fr, fc)}->${coordId(r, c)}`;
   return { ...state, grid: g, actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
 }
 
@@ -692,19 +769,17 @@ function doAttack(state: GameState, r: number, c: number): GameState {
   e.hp -= 1;
   const newActed = new Set(state.actedUnits);
   newActed.add(atk.id);
-  let log = addLogEntry(state.log, state.turn, `⚔️ ${atk.t}(${atk.team})→${e.t}(${e.team}) на ${coordId(r, c)} → ${e.hp}/${e.maxhp}`);
-  let history = addLogEntry(state.history, state.turn, `⚔️ ${atk.t}(${atk.team})→${e.t}(${e.team}) на ${coordId(r, c)} → ${e.hp}/${e.maxhp}`);
+  let log = addLogEntry(state.log, state.turn, `${atk.t}(${atk.team}) attacks ${e.t}(${e.team}) at ${coordId(r, c)} → ${e.hp}/${e.maxhp}`);
+  let history = addLogEntry(state.history, state.turn, `${atk.t}(${atk.team}) attacks ${e.t}(${e.team}) at ${coordId(r, c)} → ${e.hp}/${e.maxhp}`);
   let winner = state.winner;
   let kingKilledTeam = state.kingKilledTeam;
   if (e.hp <= 0) {
-    const kill = `💀 ${e.t} ${state.lang === 'en' ? 'destroyed at' : 'уничтожен на'} ${coordId(r, c)}`;
+    const kill = `${e.t} destroyed at ${coordId(r, c)}`;
     log = addLogEntry(log, state.turn, kill);
     history = addLogEntry(history, state.turn, kill);
     g[r][c].units.splice(g[r][c].units.indexOf(e), 1);
     if (e.t === 'K') {
-      const kingMsg = state.lang === 'en'
-        ? `👑💀 King of ${e.team === 'red' ? 'Red' : 'Yellow'} was slain!`
-        : `👑💀 КОРОЛЬ ${e.team === 'red' ? 'КРАСНЫХ' : 'ЖЁЛТЫХ'} УБИТ!`;
+      const kingMsg = `King of ${e.team === 'red' ? 'Red' : 'Yellow'} was slain!`;
       log = addLogEntry(log, state.turn, kingMsg);
       history = addLogEntry(history, state.turn, kingMsg);
       kingKilledTeam = e.team;
@@ -731,15 +806,16 @@ function doHeal(state: GameState, r: number, c: number): GameState {
   const g = cloneGrid(state.grid);
   const t = g[r][c].units[g[r][c].units.length - 1];
   t.hp = Math.min(t.maxhp, t.hp + 1);
-  const msg = `💊 M лечит ${t.t} → ${t.hp}/${t.maxhp} на ${coordId(r, c)}`;
+  const msg = `M heals ${t.t} → ${t.hp}/${t.maxhp} at ${coordId(r, c)}`;
   return { ...state, grid: g, medicCooldowns: { ...state.medicCooldowns, [medic.id]: 2 }, actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
 }
 
 function doWheal(state: GameState, r: number, c: number): GameState {
   if (!state.actionFrom || state.actionFromIdx === null) return { ...state, info: tr(state, 'clickWhealerFirst') };
-  if (!state.devMode && state.wCooldown > 0) return { ...state, info: `${tr(state, 'wCooldown')} ${state.wCooldown} ${tr(state, 'medicCooldownEnd')}` };
   const wmed = state.grid[state.actionFrom[0]][state.actionFrom[1]].units[state.actionFromIdx];
   if (!wmed || wmed.t !== 'W') return { ...state, info: tr(state, 'onlyWHeals') };
+  const teamCooldown = wmed.team === 'red' ? state.wCooldownRed : state.wCooldownYellow;
+  if (!state.devMode && teamCooldown > 0) return { ...state, info: `${tr(state, 'wCooldown')} ${teamCooldown} ${tr(state, 'medicCooldownEnd')}` };
   if (state.grid[r][c].units.length === 0) return { ...state, info: `${tr(state, 'noUnitsOnCell')} ${coordId(r, c)}` };
   const target = state.grid[r][c].units[state.grid[r][c].units.length - 1];
   if (target.t === 'E') return { ...state, info: tr(state, 'cannotHealDefender') };
@@ -747,8 +823,13 @@ function doWheal(state: GameState, r: number, c: number): GameState {
   const g = cloneGrid(state.grid);
   const t = g[r][c].units[g[r][c].units.length - 1];
   t.hp = Math.min(t.maxhp, t.hp + 1);
-  const msg = `📡 W дист. лечит ${t.t} → ${t.hp}/${t.maxhp} | кд→5`;
-  return { ...state, grid: g, wCooldown: 5, actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+  const msg = `W heals ${t.t} → ${t.hp}/${t.maxhp} at ${coordId(r, c)}`;
+  const newCooldowns = { ...state.medicCooldowns, [wmed.id]: 2 };
+  if (wmed.team === 'red') {
+    return { ...state, grid: g, wCooldownRed: 5, medicCooldowns: newCooldowns, actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+  } else {
+    return { ...state, grid: g, wCooldownYellow: 5, medicCooldowns: newCooldowns, actionFrom: null, actionFromIdx: null, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
+  }
 }
 
 function doChipClick(state: GameState, r: number, c: number, idx: number): GameState {
@@ -757,7 +838,7 @@ function doChipClick(state: GameState, r: number, c: number, idx: number): GameS
   if (state.mode === 'delete-unit') {
     const g = cloneGrid(state.grid);
     g[r][c].units.splice(idx, 1);
-    const msg = `Удалён ${u.t} с ${coordId(r, c)}`;
+    const msg = `Deleted ${u.t} from ${coordId(r, c)}`;
     return { ...state, grid: g, selCell: null, selIdx: null, log: addLogEntry(state.log, state.turn, msg), history: addLogEntry(state.history, state.turn, msg) };
   }
   if (state.actionFrom && state.actionFromIdx !== null && ['move', 'attack', 'heal', 'wheal'].includes(state.mode)) {
@@ -801,22 +882,22 @@ function applyAIAction(state: GameState, act: AIAction, num: number): { state: G
   let log = state.log;
   let history = state.history;
 
-  if (type === 'pass') { log = addLogEntry(log, s.turn, `🤖 ${num}: пропуск${note}`); history = addLogEntry(history, s.turn, `🤖 ${num}: пропуск${note}`); return { state: s, log, history }; }
-  if (type === 'diplomacy') { log = addLogEntry(log, s.turn, `🤖 Дипломатия${note}`); history = addLogEntry(history, s.turn, `🤖 Дипломатия${note}`); return { state: s, log, history }; }
+  if (type === 'pass') { log = addLogEntry(log, s.turn, `AI ${num}: pass${note}`); history = addLogEntry(history, s.turn, `AI ${num}: pass${note}`); return { state: s, log, history }; }
+  if (type === 'diplomacy') { log = addLogEntry(log, s.turn, `AI Diplomacy${note}`); history = addLogEntry(history, s.turn, `AI Diplomacy${note}`); return { state: s, log, history }; }
 
   if (type === 'move') {
     const from = coordToRC(act.from ?? ''); const to = coordToRC(act.to ?? '');
-    if (!from || !to) { log = addLogEntry(log, s.turn, `🤖 ${num}: некорректные координаты move`); return { state: s, log, history }; }
+    if (!from || !to) { log = addLogEntry(log, s.turn, `AI ${num}: invalid move coordinates`); return { state: s, log, history }; }
     const [fr, fc] = from; const [tr, tc] = to;
     const unit = s.grid[fr][fc].units.find((u) => u.t === (act.unit as UnitType));
-    if (!unit) { log = addLogEntry(log, s.turn, `🤖 ${num}: юнит ${act.unit} не найден на ${act.from}`); return { state: s, log, history }; }
-    if (s.grid[tr][tc].units.length >= 10) { log = addLogEntry(log, s.turn, `🤖 ${num}: лимит на ${act.to}`); return { state: s, log, history }; }
+    if (!unit) { log = addLogEntry(log, s.turn, `AI ${num}: unit ${act.unit} not found at ${act.from}`); return { state: s, log, history }; }
+    if (s.grid[tr][tc].units.length >= 10) { log = addLogEntry(log, s.turn, `AI ${num}: unit limit at ${act.to}`); return { state: s, log, history }; }
     const g = cloneGrid(s.grid);
     const idx = g[fr][fc].units.findIndex((u) => u.id === unit.id);
     const moved = g[fr][fc].units.splice(idx, 1)[0];
     g[tr][tc].units.push(moved);
     s = { ...s, grid: g };
-    const m = `🤖 ${num}: move ${act.unit} ${act.from}→${act.to}${note}`;
+    const m = `AI ${num}: move ${act.unit} ${act.from}->${act.to}${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     return { state: s, log, history };
   }
@@ -826,24 +907,22 @@ function applyAIAction(state: GameState, act: AIAction, num: number): { state: G
     if (!from || !to) return { state: s, log, history };
     const [fr, fc] = from; const [tr, tc] = to;
     const atk = s.grid[fr][fc].units.find((u) => u.t === (act.unit as UnitType));
-    if (!atk) { log = addLogEntry(log, s.turn, `🤖 ${num}: атакующий не найден`); return { state: s, log, history }; }
+    if (!atk) { log = addLogEntry(log, s.turn, `AI ${num}: attacker not found`); return { state: s, log, history }; }
     const tgt = s.grid[tr][tc];
-    if (tgt.units.length === 0) { log = addLogEntry(log, s.turn, `🤖 ${num}: цель пуста ${act.to}`); return { state: s, log, history }; }
+    if (tgt.units.length === 0) { log = addLogEntry(log, s.turn, `AI ${num}: target empty at ${act.to}`); return { state: s, log, history }; }
     const enemy = tgt.units[tgt.units.length - 1];
-    if (enemy.t === 'E') { log = addLogEntry(log, s.turn, `🤖 ${num}: Защитник заблокировал на ${act.to}`); return { state: s, log, history }; }
+    if (enemy.t === 'E') { log = addLogEntry(log, s.turn, `AI ${num}: Defender blocked at ${act.to}`); return { state: s, log, history }; }
     const g = cloneGrid(s.grid);
     const e = g[tr][tc].units[g[tr][tc].units.length - 1];
     e.hp -= 1;
-    const m = `🤖 ${num}: attack ${atk.t}→${e.t} ${act.to} → ${e.hp}/${e.maxhp}${note}`;
+    const m = `AI ${num}: attack ${atk.t}->${e.t} ${act.to} → ${e.hp}/${e.maxhp}${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     if (e.hp <= 0) {
       g[tr][tc].units.splice(g[tr][tc].units.indexOf(e), 1);
-      const kill = `🤖 ${e.t} ${s.lang === 'en' ? 'destroyed at' : 'уничтожен на'} ${act.to}`;
+      const kill = `AI ${e.t} destroyed at ${act.to}`;
       log = addLogEntry(log, s.turn, kill); history = addLogEntry(history, s.turn, kill);
       if (e.t === 'K') {
-        const end = s.lang === 'en'
-          ? `👑💀 King of ${e.team === 'red' ? 'Red' : 'Yellow'} was slain!`
-          : `👑💀 КОРОЛЬ ${e.team === 'red' ? 'КРАСНЫХ' : 'ЖЁЛТЫХ'} УБИТ!`;
+        const end = `King of ${e.team === 'red' ? 'Red' : 'Yellow'} was slain!`;
         log = addLogEntry(log, s.turn, end); history = addLogEntry(history, s.turn, end);
         s = { ...s, kingKilledTeam: e.team };
       }
@@ -860,21 +939,30 @@ function applyAIAction(state: GameState, act: AIAction, num: number): { state: G
     const t = g[tr][tc].units[g[tr][tc].units.length - 1];
     t.hp = Math.min(t.maxhp, t.hp + 1);
     s = { ...s, grid: g };
-    const m = `🤖 ${num}: heal ${t.t} → ${t.hp}/${t.maxhp}${note}`;
+    const m = `AI ${num}: heal ${t.t} → ${t.hp}/${t.maxhp}${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     return { state: s, log, history };
   }
 
   if (type === 'wheal') {
     const to = coordToRC(act.to ?? ''); if (!to) return { state: s, log, history };
-    if (s.wCooldown > 0) { log = addLogEntry(log, s.turn, `🤖 ${num}: W на кулдауне!`); return { state: s, log, history }; }
+    const from = coordToRC(act.from ?? ''); if (!from) return { state: s, log, history };
+    const [fr, fc] = from;
+    const wmed = s.grid[fr][fc].units.find(u => u.t === 'W');
+    if (!wmed) return { state: s, log, history };
+    const teamCooldown = wmed.team === 'red' ? s.wCooldownRed : s.wCooldownYellow;
+    if (teamCooldown > 0) { log = addLogEntry(log, s.turn, `AI ${num}: W on cooldown!`); return { state: s, log, history }; }
     const [tr, tc] = to;
     if (s.grid[tr][tc].units.length === 0) return { state: s, log, history };
     const g = cloneGrid(s.grid);
     const t = g[tr][tc].units[g[tr][tc].units.length - 1];
     t.hp = Math.min(t.maxhp, t.hp + 1);
-    s = { ...s, grid: g, wCooldown: 5 };
-    const m = `🤖 ${num}: wheal ${t.t} → ${t.hp}/${t.maxhp}${note}`;
+    if (wmed.team === 'red') {
+      s = { ...s, grid: g, wCooldownRed: 5 };
+    } else {
+      s = { ...s, grid: g, wCooldownYellow: 5 };
+    }
+    const m = `AI ${num}: wheal ${t.t} → ${t.hp}/${t.maxhp}${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     return { state: s, log, history };
   }
@@ -887,7 +975,7 @@ function applyAIAction(state: GameState, act: AIAction, num: number): { state: G
     const g = cloneGrid(s.grid);
     g[ar][ac].territory = unit.team === 'red' ? 'red-t' : 'yellow-t';
     s = { ...s, grid: g };
-    const m = `🤖 ${num}: capture ${coordId(ar, ac)}(${act.unit})${note}`;
+    const m = `AI ${num}: capture ${coordId(ar, ac)}(${act.unit})${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     return { state: s, log, history };
   }
@@ -899,29 +987,30 @@ function applyAIAction(state: GameState, act: AIAction, num: number): { state: G
     const team = s.turnTeam;
     const cost = udef.cost;
     const bal = teamBalance(team, s.redMoney, s.yelMoney);
-    if (cost > 0 && bal < cost) { log = addLogEntry(log, s.turn, `🤖 ${num}: не хватает денег для ${utype}`); return { state: s, log, history }; }
+    if (cost > 0 && bal < cost) { log = addLogEntry(log, s.turn, `AI ${num}: not enough bars for ${utype}`); return { state: s, log, history }; }
     let redMoney = s.redMoney, yelMoney = s.yelMoney;
     if (cost > 0) { if (team === 'red') redMoney = r01(redMoney - cost); else yelMoney = r01(yelMoney - cost); }
     const g = cloneGrid(s.grid);
     g[at[0]][at[1]].units.push({ id: uid(), t: utype, hp: udef.maxhp, maxhp: udef.maxhp, team });
     s = { ...s, grid: g, redMoney, yelMoney };
-    const m = `🤖 ${num}: spawn ${utype} на ${coordId(at[0], at[1])}${cost > 0 ? ` [−${cost}🍫]` : ''}${note}`;
+    const m = `AI ${num}: spawn ${utype} at ${coordId(at[0], at[1])}${cost > 0 ? ` [-${cost} bars]` : ''}${note}`;
     log = addLogEntry(log, s.turn, m); history = addLogEntry(history, s.turn, m);
     return { state: s, log, history };
   }
 
-  log = addLogEntry(log, s.turn, `🤖 ${num}: неизвестный тип: ${type}`);
+  log = addLogEntry(log, s.turn, `AI ${num}: unknown type: ${type}`);
   return { state: s, log, history };
 }
 
 function loadState(state: GameState, sv: SavedState): GameState {
   let turn = state.turn, turnTeam = state.turnTeam, redMoney = state.redMoney, yelMoney = state.yelMoney;
-  let wCooldown = state.wCooldown, medicCooldowns = state.medicCooldowns, cols = state.cols, rows = state.rows;
+  let wCooldownRed = state.wCooldownRed, wCooldownYellow = state.wCooldownYellow, medicCooldowns = state.medicCooldowns, cols = state.cols, rows = state.rows;
   let grid = state.grid, news = state.news, events = state.events, aiNotes = state.aiNotes;
 
   if (sv.meta) { turn = sv.meta.turn ?? turn; turnTeam = sv.meta.activeTeam ?? turnTeam; }
   if (sv.money) { redMoney = sv.money.red ?? redMoney; yelMoney = sv.money.yellow ?? yelMoney; }
-  if (sv.wCooldown !== undefined) wCooldown = sv.wCooldown;
+  if (sv.wCooldownRed !== undefined) wCooldownRed = sv.wCooldownRed;
+  if (sv.wCooldownYellow !== undefined) wCooldownYellow = sv.wCooldownYellow;
   if (sv.medicCooldowns) medicCooldowns = sv.medicCooldowns;
   if (sv.map) {
     cols = sv.map.cols ?? cols; rows = sv.map.rows ?? rows;
@@ -933,10 +1022,16 @@ function loadState(state: GameState, sv: SavedState): GameState {
     grid = g;
   }
   if (sv.news !== undefined) news = sv.news;
-  if (sv.events) events = sv.events.map((e, i) => ({ id: String(i), text: e.text, expTurn: e.expiresOnTurn ?? null, done: false }));
+  if (sv.events) events = sv.events.map((e, i) => ({ 
+    id: String(i), 
+    text: e.text, 
+    desc: e.desc ?? '', 
+    expTurn: e.expiresOnTurn ?? null, 
+    done: false 
+  }));
   if (sv.aiNotes) aiNotes = sv.aiNotes;
-  const msg = state.lang === 'en' ? `📂 State loaded: turn ${turn}` : `📂 Состояние загружено: ход ${turn}`;
-  return { ...state, turn, turnTeam, redMoney, yelMoney, wCooldown, medicCooldowns, cols, rows, grid, news, events, aiNotes, info: msg, log: addLogEntry(state.log, turn, msg), history: addLogEntry(state.history, turn, msg) };
+  const msg = `State loaded: turn ${turn}`;
+  return { ...state, turn, turnTeam, redMoney, yelMoney, wCooldownRed, wCooldownYellow, medicCooldowns, cols, rows, grid, news, events, aiNotes, info: msg, log: addLogEntry(state.log, turn, msg), history: addLogEntry(state.history, turn, msg) };
 }
 
 // ─── Hook ────────────────────────────────────────────────
@@ -964,14 +1059,15 @@ export function useGame() {
     captureCell: () => dispatch({ type: 'CAPTURE_CELL' }),
     addMoney: (team: Team, amount: number) => dispatch({ type: 'ADD_MONEY', team, amount }),
     transfer: (from: Team, to: Team, amount: number) => dispatch({ type: 'TRANSFER', from, to, amount }),
-    wcdSet: (value: number) => dispatch({ type: 'WCD_SET', value }),
+    wcdSet: (team: Team, value: number) => dispatch({ type: 'WCD_SET', team, value }),
     nextTurn: () => dispatch({ type: 'NEXT_TURN' }),
     prevTurn: () => dispatch({ type: 'PREV_TURN' }),
     setNews: (text: string) => dispatch({ type: 'SET_NEWS', text }),
     setPlayerMsg: (text: string) => dispatch({ type: 'SET_PLAYER_MSG', text }),
-    addEvent: (text: string, expTurn: number | null) => dispatch({ type: 'ADD_EVENT', text, expTurn }),
+    addEvent: (text: string, desc: string, expTurn: number | null) => dispatch({ type: 'ADD_EVENT', text, desc, expTurn }),
     toggleEvent: (idx: number) => dispatch({ type: 'TOGGLE_EVENT', idx }),
     deleteEvent: (idx: number) => dispatch({ type: 'DELETE_EVENT', idx }),
+    extendEvent: (idx: number, newExpTurn: number) => dispatch({ type: 'EXTEND_EVENT', idx, newExpTurn }),
     applyAI: (resp: AIResponse) => dispatch({ type: 'APPLY_AI', resp }),
     loadState: (sv: SavedState) => dispatch({ type: 'LOAD_STATE', state: sv }),
     clearLog: () => dispatch({ type: 'CLEAR_LOG' }),
@@ -984,6 +1080,10 @@ export function useGame() {
       localStorage.setItem('sp-lang', lang);
       dispatch({ type: 'SET_LANG', lang });
     },
+    setOpponentType: (opponentType: 'ai' | 'human-offline' | 'human-online') => dispatch({ type: 'SET_OPPONENT_TYPE', opponentType }),
+    setRulesDisabled: (value: boolean) => dispatch({ type: 'SET_RULES_DISABLED', value }),
+    setYourNotes: (text: string) => dispatch({ type: 'SET_YOUR_NOTES', text }),
+    toggleYourNotesExpanded: () => dispatch({ type: 'TOGGLE_YOUR_NOTES_EXPANDED' }),
   }), [dispatch]);
 
   const buildGameStateJson = useCallback((lang: Lang) => buildExportJson(state, lang), [state]);
@@ -1003,6 +1103,51 @@ function buildExportJson(state: GameState, lang: Lang) {
       units: cell.units.map((u) => ({ t: u.t, hp: u.hp, maxhp: u.maxhp, team: u.team })),
     }))
   );
+  
+  if (state.opponentType === 'human-offline') {
+    return {
+      meta: {
+        game: 'Snickers Presidents',
+        turn: state.turn,
+        activeTeam: state.turnTeam,
+        activeTeamName: state.turnTeam === 'red' ? 'Red' : 'Yellow',
+        devMode: state.devMode,
+        language: lang,
+        opponentType: state.opponentType,
+      },
+      money: { red: state.redMoney, yellow: state.yelMoney },
+      wCooldownRed: state.wCooldownRed,
+      wCooldownYellow: state.wCooldownYellow,
+      map: { cols: state.cols, rows: state.rows, grid: mapGrid },
+      news: state.news,
+      events: state.events.filter((e) => !e.done).map((e) => ({ text: e.text, desc: e.desc, expiresOnTurn: e.expTurn })),
+      recentLog: state.log.slice(-20).map((l) => `[${l.turn}] ${l.text}`),
+    };
+  }
+
+  if (state.opponentType === 'human-online') {
+    return {
+      meta: {
+        game: 'Snickers Presidents',
+        turn: state.turn,
+        activeTeam: state.turnTeam,
+        activeTeamName: state.turnTeam === 'red' ? 'Red' : 'Yellow',
+        devMode: state.devMode,
+        language: lang,
+        opponentType: state.opponentType,
+        // Secret flag for rules disabled - obfuscated
+        _integrity: state.rulesDisabled ? 'modified' : 'standard',
+      },
+      money: { red: state.redMoney, yellow: state.yelMoney },
+      wCooldownRed: state.wCooldownRed,
+      wCooldownYellow: state.wCooldownYellow,
+      map: { cols: state.cols, rows: state.rows, grid: mapGrid },
+      news: state.news,
+      events: state.events.filter((e) => !e.done).map((e) => ({ text: e.text, desc: e.desc, expiresOnTurn: e.expTurn })),
+      recentLog: state.log.slice(-20).map((l) => `[${l.turn}] ${l.text}`),
+    };
+  }
+
   return {
     meta: {
       game: 'Snickers Presidents',
@@ -1011,15 +1156,18 @@ function buildExportJson(state: GameState, lang: Lang) {
       activeTeamName: state.turnTeam === 'red' ? 'Red' : 'Yellow',
       devMode: state.devMode,
       language: lang,
+      opponentType: state.opponentType,
+      // Flag for AI mode when rules disabled
+      IsYourOpPlayingWithDEVTools: state.rulesDisabled,
     },
     money: { red: state.redMoney, yellow: state.yelMoney },
-    wCooldown: state.wCooldown,
+    wCooldownRed: state.wCooldownRed,
+    wCooldownYellow: state.wCooldownYellow,
     map: { cols: state.cols, rows: state.rows, grid: mapGrid },
     news: state.news,
     playerMessage: state.playerMessage,
     playerPeekedYourNotes: state.playerPeekedNotes,
-    events: state.events.filter((e) => !e.done).map((e) => ({ text: e.text, expiresOnTurn: e.expTurn })),
-    /** Личный блокнот ИИ — доступен только ИИ, игрок узнаёт содержимое через playerPeekedYourNotes */
+    events: state.events.filter((e) => !e.done).map((e) => ({ text: e.text, desc: e.desc, expiresOnTurn: e.expTurn })),
     aiNotebook: state.aiNotes.map((n) => ({ id: n.id, text: n.text, createdTurn: n.createdTurn, updatedTurn: n.updatedTurn })),
     recentLog: state.log.slice(-20).map((l) => `[${l.turn}] ${l.text}`),
     rules: RULES,
@@ -1049,7 +1197,7 @@ function buildHistoryJson(state: GameState) {
 function buildExportText(state: GameState) {
   const lines: string[] = [
     `=== SNICKERS PRESIDENTS | Turn ${state.turn} | ${state.turnTeam === 'red' ? 'Red' : 'Yellow'} ===`,
-    `Money: Red=${state.redMoney.toFixed(1)} | Yellow=${state.yelMoney.toFixed(1)} | W-CD=${state.wCooldown}`,
+    `Money: Red=${state.redMoney.toFixed(1)} | Yellow=${state.yelMoney.toFixed(1)} | W-CD(Red)=${state.wCooldownRed} | W-CD(Yellow)=${state.wCooldownYellow}`,
     '',
   ];
   if (state.news) lines.push(`NEWS: ${state.news}`, '');

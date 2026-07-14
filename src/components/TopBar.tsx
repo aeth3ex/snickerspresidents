@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronRight, ChevronLeft, Save, Copy, FolderOpen, Crown,
-  RotateCcw, Trash2, Download, Unlock, KeyRound, ScrollText, BookOpen, Globe,
+  RotateCcw, Trash2, Download, Unlock, KeyRound, ScrollText, BookOpen, Users,
   Newspaper,
 } from 'lucide-react';
 import { useI18n, type Lang } from '../i18n';
@@ -27,6 +27,7 @@ interface Props {
   onShowChangelog: () => void;
   onShowRules: () => void;
   onShowNews: () => void;
+  onShowSettings: () => void;
   onDevCodeSubmit: (code: string) => Promise<boolean>;
   onSetLang: (l: Lang) => void;
 }
@@ -35,7 +36,7 @@ export function TopBar({
   turn, turnTeam, winner, devMode, changelogVersion, lang,
   onNextTurn, onPrevTurn, onExport, onCopy, onHistory: _onHistory, onImport,
   onResetGame, onClearHistory, onDownloadHistory, onToggleDevMode,
-  onShowChangelog, onShowRules, onShowNews, onDevCodeSubmit, onSetLang,
+  onShowChangelog, onShowRules, onShowNews, onShowSettings, onDevCodeSubmit, onSetLang,
 }: Props) {
   const { t } = useI18n();
   const isRed = turnTeam === 'red';
@@ -94,18 +95,14 @@ export function TopBar({
 
       <div className="flex-1" />
 
-      {/* Language toggle */}
-      <div className="flex items-center gap-0.5 bg-ink-800 border border-ink-600 rounded-lg p-0.5">
-        <Globe size={13} className="text-slate-500 ml-1" />
-        <button
-          onClick={() => onSetLang('ru')}
-          className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${lang === 'ru' ? 'bg-accent-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-        >RU</button>
-        <button
-          onClick={() => onSetLang('en')}
-          className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${lang === 'en' ? 'bg-accent-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-        >EN</button>
-      </div>
+      {/* Settings button */}
+      <button
+        onClick={onShowSettings}
+        title={lang === 'ru' ? 'Настройки' : 'Settings'}
+        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-600 text-slate-300 transition-colors"
+      >
+        <Users size={13} /> <span className="hidden md:inline">{lang === 'ru' ? 'Настройки' : 'Settings'}</span>
+      </button>
 
       <div className="flex items-center gap-1.5 flex-wrap">
         <button
